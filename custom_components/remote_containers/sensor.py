@@ -92,8 +92,7 @@ class ContainerStateSensor(CoordinatorEntity[RemoteContainersCoordinator], Senso
         container = self.container
         if container is None:
             return None
-        # Return the actual status (running, exited, stopped, paused, etc.)
-        return container.status
+        return container.state
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -120,6 +119,7 @@ class ContainerStateSensor(CoordinatorEntity[RemoteContainersCoordinator], Senso
             "container_id": container.container_id,
             "image": container.image,
             "image_id": container.image_id,
+            "status": container.status,
             "created": container.created,
             "ports": container.ports,
             "is_running": container.is_running,

@@ -1,0 +1,57 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Remote Containers",
+        "description": "Configure SSH connection to the remote container host.",
+        "data": {
+          "ssh_host": "SSH Host",
+          "ssh_port": "SSH Port",
+          "ssh_username": "SSH Username",
+          "ssh_key_file": "SSH Key File Path",
+          "container_label": "Container Label Filter"
+        },
+        "data_description": {
+          "ssh_host": "Hostname or IP address of the remote machine.",
+          "ssh_port": "SSH port (default: 22).",
+          "ssh_username": "Username for SSH authentication.",
+          "ssh_key_file": "Path to SSH private key file (optional if using ssh-agent).",
+          "container_label": "Only manage containers with this label (e.g., ha.remote.managed=true)."
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Remote Containers",
+        "description": "Update the SSH connection settings.",
+        "data": {
+          "ssh_host": "SSH Host",
+          "ssh_port": "SSH Port",
+          "ssh_username": "SSH Username",
+          "ssh_key_file": "SSH Key File Path",
+          "container_label": "Container Label Filter"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the remote host. Check the hostname and port.",
+      "invalid_auth": "Authentication failed. Check the username and SSH key.",
+      "invalid_key_file": "SSH key file not found or invalid.",
+      "unknown": "An unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This host is already configured.",
+      "already_in_progress": "Configuration is already in progress."
+    }
+  },
+  "entity": {
+    "switch": {
+      "running": {
+        "name": "Running"
+      }
+    },
+    "update": {
+      "update": {
+        "name": "Update"
+      }
+    }
+  }
+}

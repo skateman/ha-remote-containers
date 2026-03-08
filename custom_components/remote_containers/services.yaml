@@ -1,0 +1,99 @@
+create:
+  name: Create Container
+  description: Create a new container on the remote host.
+  fields:
+    container_name:
+      name: Container Name
+      description: Name for the new container.
+      required: true
+      example: "my-container"
+      selector:
+        text:
+    image:
+      name: Image
+      description: Container image to use (e.g., nginx:latest).
+      required: true
+      example: "nginx:latest"
+      selector:
+        text:
+    ports:
+      name: Ports
+      description: Port mappings (host:container).
+      required: false
+      example: '{"8080": "80", "8443": "443"}'
+      selector:
+        object:
+    environment:
+      name: Environment Variables
+      description: Environment variables for the container.
+      required: false
+      example: '{"MY_VAR": "value"}'
+      selector:
+        object:
+    volumes:
+      name: Volumes
+      description: Volume mounts (host:container format).
+      required: false
+      example: '["/data:/app/data", "/config:/app/config"]'
+      selector:
+        object:
+    labels:
+      name: Labels
+      description: Additional labels to add to the container.
+      required: false
+      selector:
+        object:
+    restart_policy:
+      name: Restart Policy
+      description: Container restart policy.
+      required: false
+      default: "unless-stopped"
+      selector:
+        select:
+          options:
+            - "no"
+            - "always"
+            - "unless-stopped"
+            - "on-failure"
+
+remove:
+  name: Remove Container
+  description: Remove a container from the remote host.
+  fields:
+    container_id:
+      name: Container ID
+      description: The ID or name of the container to remove.
+      required: true
+      example: "abc123def456"
+      selector:
+        text:
+    force:
+      name: Force
+      description: Force removal of a running container.
+      required: false
+      default: false
+      selector:
+        boolean:
+    remove_volumes:
+      name: Remove Volumes
+      description: Remove anonymous volumes associated with the container.
+      required: false
+      default: false
+      selector:
+        boolean:
+
+pull_image:
+  name: Pull Image
+  description: Pull a container image from the registry.
+  fields:
+    image:
+      name: Image
+      description: Image to pull (e.g., nginx:latest).
+      required: true
+      example: "nginx:latest"
+      selector:
+        text:
+
+check_updates:
+  name: Check for Updates
+  description: Check all managed containers for available image updates.

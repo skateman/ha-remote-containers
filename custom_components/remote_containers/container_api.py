@@ -281,10 +281,7 @@ class ContainerAPI:
             raise ContainerAPIError("Container has no name, cannot recreate")
 
         # Stop the container
-        state = inspect_data.get("State", {})
-        is_running = state.get("Running", False) or state.get("Status", "").lower() == "running"
-        if is_running:
-            await self.async_stop_container(container_id)
+        await self.async_stop_container(container_id)
 
         # Rename old container as backup instead of removing it.
         # Backup containers are filtered out of async_list_containers.
@@ -479,6 +476,9 @@ class ContainerAPI:
         if returncode != 0:
             _LOGGER.warning("Failed to remove backup container %s: %s", backup_name, stderr)
 
+        # Prune dangling images left behind by the update
+        await self.async_prune_images()
+
         return new_container_id
 
     async def _async_rollback_container(
@@ -594,6 +594,8 @@ class ContainerAPI:
             
             # Compare first 12 chars
             if current_normalized[:12] != new_normalized[:12]:
+                # Prune the old dangling image left behind by the pull
+                await self.async_prune_images()
                 return True, new_info.digest or new_info.image_id
 
         return False, None
@@ -656,6 +658,38 @@ class ContainerAPI:
         container_id = stdout.strip()[:12]
         _LOGGER.info("Created container %s (%s)", name, container_id)
         return container_id
+
+    async def async_prune_images(self) -> int:
+        """Remove dangling images (untagged and unused).
+
+        Uses `image prune` which only removes images that have lost all their
+        tags (e.g. after pulling a newer version of the same tag). Images that
+        still have at least one tag are never touched, even if unused.
+
+        Returns:
+            Number of images removed.
+        """
+        cmd = self._cmd("image prune -f")
+        stdout, stderr, returncode = await self._connection.async_run_command(cmd)
+
+        if returncode != 0:
+            _LOGGER.warning("Failed to prune dangling images: %s", stderr)
+            return 0
+
+        # Count removed images from output
+        removed = 0
+        for line in stdout.strip().split("\n"):
+            # Docker outputs "deleted: sha256:..." or "Deleted: sha256:..."
+            # Podman outputs "sha256:..." lines directly
+            if line.strip() and ("sha256:" in line or "deleted" in line.lower()):
+                removed += 1
+
+        if removed:
+            _LOGGER.info("Pruned %d dangling image(s)", removed)
+        else:
+            _LOGGER.debug("No dangling images to prune")
+
+        return removed
 
     async def async_remove_container(
         self, container_id: str, force: bool = False, volumes: bool = False

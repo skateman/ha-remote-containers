@@ -13,6 +13,7 @@ from homeassistant.components.update import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_time_interval
@@ -215,6 +216,21 @@ class ContainerUpdate(CoordinatorEntity[RemoteContainersCoordinator], UpdateEnti
         if container is None:
             _LOGGER.error("Cannot update: container not found")
             return
+
+        # Live check: query Docker directly over SSH to verify the container
+        # is running right now, not relying on cached coordinator data
+        inspect_data = await self.coordinator.container_api._inspect_container(
+            container.name
+        )
+        live_state = inspect_data.get("State", {})
+        live_running = (
+            live_state.get("Running", False)
+            or live_state.get("Status", "").lower() == "running"
+        )
+        if not live_running:
+            raise HomeAssistantError(
+                f"Container {container.name} is not running, cannot update"
+            )
 
         _LOGGER.info("Updating container %s to latest image", container.name)
         self._in_progress = True

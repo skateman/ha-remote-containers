@@ -149,6 +149,9 @@ class ContainerUpdate(CoordinatorEntity[RemoteContainersCoordinator], UpdateEnti
     @property
     def latest_version(self) -> str | None:
         """Return the latest available version."""
+        # Don't show updates for stopped containers
+        if self.container is not None and not self.container.is_running:
+            return self.installed_version
         # If we detected an update, return the new version
         if self._latest_version:
             return self._latest_version

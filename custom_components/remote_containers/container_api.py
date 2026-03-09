@@ -10,6 +10,7 @@ from typing import Any
 
 from .connection import SSHConnection, SSHConnectionError
 from .const import (
+    BACKUP_SUFFIX,
     CONF_CONTAINER_LABEL,
     CONF_RUNTIME,
     CONTAINER_STATE_RUNNING,
@@ -144,7 +145,7 @@ class ContainerAPI:
             try:
                 data = json.loads(line)
                 container = await self._parse_container_info(data)
-                if container:
+                if container and not container.name.endswith(BACKUP_SUFFIX):
                     containers.append(container)
             except json.JSONDecodeError as err:
                 _LOGGER.warning("Failed to parse container JSON: %s", err)
@@ -259,8 +260,10 @@ class ContainerAPI:
     async def async_recreate_container(self, container_id: str, new_image: str) -> str:
         """Recreate a container with a new image.
 
-        Captures the current container config, removes it, and creates a new one.
-        Preserves the running state (if it was running, start it; if stopped, leave stopped).
+        Captures the current container config, stops it, and creates a new one.
+        The old container is renamed to {name}_backup before removal. If the
+        new container fails to create or start, the backup is restored.
+        Backup containers are filtered out of discovery by async_list_containers.
 
         Returns:
             New container ID
@@ -273,25 +276,30 @@ class ContainerAPI:
         config = inspect_data.get("Config", {})
         host_config = inspect_data.get("HostConfig", {})
         name = inspect_data.get("Name", "").lstrip("/")
-        
-        # Check if container was running before we stop it
-        state = inspect_data.get("State", {})
-        was_running = state.get("Running", False) or state.get("Status", "").lower() == "running"
 
         if not name:
             raise ContainerAPIError("Container has no name, cannot recreate")
 
-        # Stop the container (if running)
-        if was_running:
+        # Stop the container
+        state = inspect_data.get("State", {})
+        is_running = state.get("Running", False) or state.get("Status", "").lower() == "running"
+        if is_running:
             await self.async_stop_container(container_id)
 
-        # Remove the container
-        cmd = self._cmd(f"rm {container_id}")
+        # Rename old container as backup instead of removing it.
+        # Backup containers are filtered out of async_list_containers.
+        backup_name = f"{name}{BACKUP_SUFFIX}"
+        cmd = self._cmd(f"rename {container_id} {backup_name}")
         stdout, stderr, returncode = await self._connection.async_run_command(cmd)
         if returncode != 0:
-            raise ContainerAPIError(f"Failed to remove container: {stderr}")
+            # If rename fails, try to restart the old container before erroring
+            try:
+                await self.async_start_container(container_id)
+            except ContainerAPIError:
+                pass
+            raise ContainerAPIError(f"Failed to rename container for backup: {stderr}")
 
-        # Build new container command - use 'create' instead of 'run -d'
+        # Build new container command with the original name
         cmd_parts = ["create", f"--name {name}"]
 
         # Restore labels
@@ -442,24 +450,59 @@ class ContainerAPI:
         # Note: We don't restore Cmd/Entrypoint as these are typically
         # image defaults. Docker will use the new image's defaults automatically.
 
-        # Create new container
+        # Create new container with the original name
         full_cmd = self._cmd(" ".join(cmd_parts))
         stdout, stderr, returncode = await self._connection.async_run_command(full_cmd)
 
         if returncode != 0:
-            _LOGGER.error("Failed to recreate container %s: %s", name, stderr)
+            _LOGGER.error("Failed to recreate container %s, rolling back: %s", name, stderr)
+            await self._async_rollback_container(name, backup_name)
             raise ContainerAPIError(f"Failed to recreate container: {stderr}")
 
         new_container_id = stdout.strip()[:12]
 
-        # Start the container only if it was running before
-        if was_running:
+        try:
             await self.async_start_container(new_container_id)
-            _LOGGER.info("Recreated and started container %s with new image %s (new ID: %s)", name, new_image, new_container_id)
-        else:
-            _LOGGER.info("Recreated container %s with new image %s (new ID: %s, left stopped)", name, new_image, new_container_id)
+        except ContainerAPIError:
+            _LOGGER.error("Failed to start new container %s, rolling back", name)
+            # Remove the failed new container and restore backup
+            rm_cmd = self._cmd(f"rm -f {new_container_id}")
+            await self._connection.async_run_command(rm_cmd)
+            await self._async_rollback_container(name, backup_name)
+            raise
+
+        _LOGGER.info("Recreated and started container %s with new image %s (new ID: %s)", name, new_image, new_container_id)
+
+        # Success — remove the backup container
+        rm_cmd = self._cmd(f"rm {backup_name}")
+        stdout, stderr, returncode = await self._connection.async_run_command(rm_cmd)
+        if returncode != 0:
+            _LOGGER.warning("Failed to remove backup container %s: %s", backup_name, stderr)
 
         return new_container_id
+
+    async def _async_rollback_container(
+        self, name: str, backup_name: str
+    ) -> None:
+        """Restore the backup container after a failed recreate."""
+        _LOGGER.info("Rolling back to backup container %s", backup_name)
+        cmd = self._cmd(f"rename {backup_name} {name}")
+        stdout, stderr, returncode = await self._connection.async_run_command(cmd)
+        if returncode != 0:
+            _LOGGER.error(
+                "Failed to restore backup container %s: %s. "
+                "Manual recovery may be needed (backup container: %s)",
+                name, stderr, backup_name,
+            )
+            return
+        try:
+            await self.async_start_container(name)
+            _LOGGER.info("Rolled back and restarted container %s", name)
+        except ContainerAPIError as err:
+            _LOGGER.error(
+                "Rolled back container %s but failed to restart it: %s",
+                name, err,
+            )
 
     async def async_pull_image(self, image: str) -> bool:
         """Pull a container image."""

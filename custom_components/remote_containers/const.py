@@ -24,6 +24,9 @@ RUNTIME_DOCKER: Final = "docker"
 RUNTIME_PODMAN: Final = "podman"
 RUNTIME_AUTO: Final = "auto"
 
+# Backup suffix for containers being updated
+BACKUP_SUFFIX: Final = "_backup"
+
 # Container states
 CONTAINER_STATE_RUNNING: Final = "running"
 CONTAINER_STATE_STOPPED: Final = "stopped"

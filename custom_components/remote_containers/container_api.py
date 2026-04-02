@@ -552,6 +552,31 @@ class ContainerAPI:
             _LOGGER.warning("Failed to parse image info: %s", err)
             return None
 
+    async def async_get_all_image_tags(self, image_ref: str) -> list[str]:
+        """Get all repository tags for an image by its ID or reference.
+
+        Args:
+            image_ref: Image reference (name:tag, short ID, or full ID)
+
+        Returns:
+            List of full repository tags
+            (e.g., ["ghcr.io/koenkk/zigbee2mqtt:latest", "ghcr.io/koenkk/zigbee2mqtt:2.9.2"])
+        """
+        cmd = self._cmd(f"image inspect {image_ref}")
+        stdout, stderr, returncode = await self._connection.async_run_command(cmd)
+
+        if returncode != 0:
+            return []
+
+        try:
+            data = json.loads(stdout)
+            if not data:
+                return []
+            img_data = data[0] if isinstance(data, list) else data
+            return img_data.get("RepoTags", []) or []
+        except (json.JSONDecodeError, IndexError, KeyError):
+            return []
+
     async def async_check_image_update(
         self, image: str, current_image_id: str | None = None
     ) -> tuple[bool, str | None]:

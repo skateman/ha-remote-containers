@@ -63,6 +63,7 @@ class ImageInfo:
     digest: str | None
     created: str
     size: int
+    labels: dict[str, str]
 
 
 class ContainerAPIError(Exception):
@@ -547,6 +548,7 @@ class ContainerAPI:
                 digest=img_data.get("RepoDigests", [None])[0] if img_data.get("RepoDigests") else None,
                 created=img_data.get("Created", ""),
                 size=img_data.get("Size", 0),
+                labels=img_data.get("Config", {}).get("Labels", {}) or {},
             )
         except (json.JSONDecodeError, IndexError, KeyError) as err:
             _LOGGER.warning("Failed to parse image info: %s", err)

@@ -29,42 +29,20 @@ from .coordinator import RemoteContainersCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
+# OCI annotation / label keys for version information
+_VERSION_LABEL_KEYS = (
+    "org.opencontainers.image.version",
+    "version",
+)
 
-def _select_best_version(tags: list[str], image_name: str) -> str | None:
-    """Select the most specific version tag from a list of repo tags.
 
-    Prefers semantic version tags over generic ones like 'latest'.
-    """
-    if not tags:
-        return None
-
-    # Extract version portion from tags matching the image repository
-    relevant_tags = []
-    for tag in tags:
-        if ":" in tag:
-            repo, ver = tag.rsplit(":", 1)
-            if repo == image_name:
-                relevant_tags.append(ver)
-
-    if not relevant_tags:
-        return None
-
-    # Filter out generic/non-version tags
-    generic = {
-        "latest", "stable", "edge", "nightly", "dev",
-        "beta", "alpha", "main", "master",
-    }
-    specific = [t for t in relevant_tags if t.lower() not in generic]
-
-    if not specific:
-        return None
-
-    # Pick the most detailed version (most segments = most specific)
-    specific.sort(
-        key=lambda t: (len(t.split(".")), len(t.split("-")), len(t)),
-        reverse=True,
-    )
-    return specific[0]
+def _version_from_labels(labels: dict[str, str]) -> str | None:
+    """Extract version from OCI image labels."""
+    for key in _VERSION_LABEL_KEYS:
+        value = labels.get(key)
+        if value:
+            return value
+    return None
 
 
 def _parse_github_owner_repo(image_name: str) -> tuple[str, str] | None:
@@ -211,11 +189,10 @@ class ContainerUpdate(CoordinatorEntity[RemoteContainersCoordinator], UpdateEnti
         self._in_progress: bool | int = False
         self._checked_for_update = False
         self._unsub_update_check: callable | None = None
-        self._installed_tags: list[str] = []
-        self._latest_tags: list[str] = []
         self._release_notes_cache: str | None = None
         self._github_name: str | None = None
         self._github_name_fetched = False
+        self._latest_version_label: str | None = None
 
     async def async_added_to_hass(self) -> None:
         """Run when entity is added to hass."""
@@ -280,9 +257,8 @@ class ContainerUpdate(CoordinatorEntity[RemoteContainersCoordinator], UpdateEnti
         image_id = self.container.image_id
         if image_id.startswith("sha256:"):
             image_id = image_id[7:]
-        best = _select_best_version(self._installed_tags, self.container.image_name)
-        tag = best or self.container.image_tag
-        return f"{tag} ({image_id[:12]})"
+        version = _version_from_labels(self.container.labels) or self.container.image_tag
+        return f"{version} ({image_id[:12]})"
 
     @property
     def latest_version(self) -> str | None:
@@ -385,8 +361,7 @@ class ContainerUpdate(CoordinatorEntity[RemoteContainersCoordinator], UpdateEnti
             # Clear update state
             self._latest_version = None
             self._update_available = False
-            self._installed_tags = []
-            self._latest_tags = []
+            self._latest_version_label = None
             self._release_notes_cache = None
 
             _LOGGER.info("Successfully updated container %s (new ID: %s)", container.name, new_container_id)
@@ -406,14 +381,6 @@ class ContainerUpdate(CoordinatorEntity[RemoteContainersCoordinator], UpdateEnti
             return
 
         try:
-            # Fetch tags for the installed image BEFORE pulling (pull may move tags)
-            if not self._installed_tags:
-                self._installed_tags = (
-                    await self.coordinator.container_api.async_get_all_image_tags(
-                        container.image_id
-                    )
-                )
-
             update_available, new_info = await self.coordinator.container_api.async_check_image_update(
                 container.image, container.image_id
             )
@@ -421,18 +388,17 @@ class ContainerUpdate(CoordinatorEntity[RemoteContainersCoordinator], UpdateEnti
             if update_available and new_info:
                 self._update_available = True
 
-                # Get tags for the newly pulled image
-                self._latest_tags = (
-                    await self.coordinator.container_api.async_get_all_image_tags(
-                        container.image
-                    )
+                # Get the new image's info to read its OCI version label
+                image_info = await self.coordinator.container_api.async_get_image_info(
+                    container.image
                 )
-
-                # Pick the best version tag for the new image
-                best = _select_best_version(
-                    self._latest_tags, container.image_name
+                version_label = (
+                    _version_from_labels(image_info.labels)
+                    if image_info
+                    else None
                 )
-                tag = best or container.image_tag
+                self._latest_version_label = version_label
+                tag = version_label or container.image_tag
 
                 # Extract hash from new image info
                 if "@sha256:" in new_info:
@@ -454,7 +420,7 @@ class ContainerUpdate(CoordinatorEntity[RemoteContainersCoordinator], UpdateEnti
             else:
                 self._update_available = False
                 self._latest_version = None
-                self._latest_tags = []
+                self._latest_version_label = None
 
             self.async_write_ha_state()
 
@@ -472,8 +438,10 @@ class ContainerUpdate(CoordinatorEntity[RemoteContainersCoordinator], UpdateEnti
         if container is None:
             return None
 
-        tags = self._latest_tags or self._installed_tags
-        version = _select_best_version(tags, container.image_name)
+        tags = self._latest_version_label
+        version = tags or (
+            _version_from_labels(container.labels) if container.labels else None
+        )
 
         notes = await _async_fetch_github_release_notes(
             self.hass, container.image_name, version

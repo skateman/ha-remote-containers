@@ -445,8 +445,11 @@ class ContainerAPI:
         # Add the new image
         cmd_parts.append(new_image)
 
-        # Note: We don't restore Cmd/Entrypoint as these are typically
-        # image defaults. Docker will use the new image's defaults automatically.
+        # Restore command/args if set
+        cmd_val = config.get("Cmd")
+        if cmd_val:
+            for arg in cmd_val:
+                cmd_parts.append(f'"{arg}"')
 
         # Create new container with the original name
         full_cmd = self._cmd(" ".join(cmd_parts))

@@ -94,6 +94,8 @@ Each managed container creates:
 | Entity Type | Name | Description |
 |-------------|------|-------------|
 | Sensor | `sensor.{container}_state` | Shows container state (running, exited, stopped, paused) |
+| Switch | `switch.{container}_running` | Toggle to start/stop the container |
+| Button | `button.{container}_restart` | Press to restart the container |
 | Update | `update.{container}_update` | Shows available image updates, click Install to update |
 
 ### Update Behavior

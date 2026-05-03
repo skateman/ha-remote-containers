@@ -41,6 +41,8 @@ class RemoteContainersCoordinator(DataUpdateCoordinator[dict[str, ContainerInfo]
         self._known_container_names: set[str] | None = None
         self._created_sensor_ids: set[str] = set()
         self._created_update_ids: set[str] = set()
+        self._created_switch_ids: set[str] = set()
+        self._created_button_ids: set[str] = set()
 
     async def _async_update_data(self) -> dict[str, ContainerInfo]:
         """Fetch data from the remote container host."""
@@ -97,6 +99,8 @@ class RemoteContainersCoordinator(DataUpdateCoordinator[dict[str, ContainerInfo]
             # Remove from our tracking sets
             self._created_sensor_ids.discard(container_name)
             self._created_update_ids.discard(container_name)
+            self._created_switch_ids.discard(container_name)
+            self._created_button_ids.discard(container_name)
 
             # Find and remove the device (this also removes its entities)
             device_identifier = (DOMAIN, f"{self.entry.entry_id}_{container_name}")

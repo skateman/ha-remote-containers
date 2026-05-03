@@ -52,4 +52,4 @@ ATTR_PORTS: Final = "ports"
 ATTR_LABELS: Final = "labels"
 
 # Platforms
-PLATFORMS: Final = ["sensor", "update"]
+PLATFORMS: Final = ["button", "sensor", "switch", "update"]

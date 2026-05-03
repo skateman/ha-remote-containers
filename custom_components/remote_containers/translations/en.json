@@ -43,6 +43,11 @@
     }
   },
   "entity": {
+    "button": {
+      "restart": {
+        "name": "Restart"
+      }
+    },
     "switch": {
       "running": {
         "name": "Running"

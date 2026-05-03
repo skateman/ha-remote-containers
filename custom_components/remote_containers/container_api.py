@@ -442,8 +442,20 @@ class ContainerAPI:
                 if start_period:
                     cmd_parts.append(f"--health-start-period {start_period // 1000000000}s")
 
+        # Restore entrypoint if customized
+        entrypoint = config.get("Entrypoint")
+        if entrypoint:
+            cmd_parts.append(f'--entrypoint "{entrypoint[0]}"')
+
         # Add the new image
         cmd_parts.append(new_image)
+
+        # Restore args from entrypoint (elements beyond the executable)
+        # Docker's --entrypoint only accepts the binary; extra entrypoint
+        # elements must be passed as positional args after the image.
+        if entrypoint and len(entrypoint) > 1:
+            for arg in entrypoint[1:]:
+                cmd_parts.append(f'"{arg}"')
 
         # Restore command/args if set
         cmd_val = config.get("Cmd")

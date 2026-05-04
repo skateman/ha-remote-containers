@@ -34,6 +34,7 @@ class ContainerInfo:
     status: str
     state: str
     created: str
+    started_at: str | None
     ports: dict[str, Any]
     labels: dict[str, str]
 
@@ -182,6 +183,7 @@ class ContainerAPI:
                 status=data.get("Status", ""),
                 state=data.get("State", inspect_data.get("State", {}).get("Status", "unknown")),
                 created=data.get("CreatedAt", ""),
+                started_at=inspect_data.get("State", {}).get("StartedAt"),
                 ports=self._parse_ports(data.get("Ports", "")),
                 labels=inspect_data.get("Config", {}).get("Labels", {}),
             )

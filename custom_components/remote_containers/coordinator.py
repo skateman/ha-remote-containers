@@ -151,6 +151,14 @@ class RemoteContainersCoordinator(DataUpdateCoordinator[dict[str, ContainerInfo]
         await self.container_api.async_restart_container(container_name)
         await self.async_request_refresh()
 
+    async def async_remove_container(self, container_name: str) -> None:
+        """Stop and remove a container, then refresh data."""
+        container = self.get_container(container_name)
+        if container is not None and container.is_running:
+            await self.container_api.async_stop_container(container_name)
+        await self.container_api.async_remove_container(container_name, force=True)
+        await self.async_request_refresh()
+
     async def async_pull_image(self, image: str) -> None:
         """Pull an image."""
         await self.container_api.async_pull_image(image)

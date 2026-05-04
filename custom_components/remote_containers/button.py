@@ -40,6 +40,9 @@ async def async_setup_entry(
                 new_entities.append(
                     ContainerRestartButton(coordinator, container_name, entry.entry_id)
                 )
+                new_entities.append(
+                    ContainerRemoveButton(coordinator, container_name, entry.entry_id)
+                )
 
         if new_entities:
             async_add_entities(new_entities)
@@ -51,28 +54,26 @@ async def async_setup_entry(
     )
 
 
-class ContainerRestartButton(
+class _ContainerButtonBase(
     CoordinatorEntity[RemoteContainersCoordinator], ButtonEntity
 ):
-    """Button to restart a container."""
+    """Base class for container buttons."""
 
     _attr_has_entity_name = True
-    _attr_translation_key = "restart"
     _attr_entity_category = EntityCategory.CONFIG
-    _attr_device_class = ButtonDeviceClass.RESTART
-    _attr_icon = "mdi:restart"
 
     def __init__(
         self,
         coordinator: RemoteContainersCoordinator,
         container_name: str,
         entry_id: str,
+        unique_id_suffix: str,
     ) -> None:
         """Initialize the button."""
         super().__init__(coordinator)
         self._container_name = container_name
         self._entry_id = entry_id
-        self._attr_unique_id = f"{entry_id}_{container_name}_restart"
+        self._attr_unique_id = f"{entry_id}_{container_name}_{unique_id_suffix}"
 
     @property
     def container(self) -> ContainerInfo | None:
@@ -98,14 +99,52 @@ class ContainerRestartButton(
             sw_version=container.image_tag if container else None,
         )
 
-    async def async_press(self) -> None:
-        """Restart the container."""
-        _LOGGER.info("Restarting container %s", self._container_name)
-        await self.coordinator.async_restart_container(self._container_name)
-
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
         if self._container_name not in self.coordinator.data:
             self._attr_available = False
         super()._handle_coordinator_update()
+
+
+class ContainerRestartButton(_ContainerButtonBase):
+    """Button to restart a container."""
+
+    _attr_translation_key = "restart"
+    _attr_device_class = ButtonDeviceClass.RESTART
+    _attr_icon = "mdi:restart"
+
+    def __init__(
+        self,
+        coordinator: RemoteContainersCoordinator,
+        container_name: str,
+        entry_id: str,
+    ) -> None:
+        """Initialize the restart button."""
+        super().__init__(coordinator, container_name, entry_id, "restart")
+
+    async def async_press(self) -> None:
+        """Restart the container."""
+        _LOGGER.info("Restarting container %s", self._container_name)
+        await self.coordinator.async_restart_container(self._container_name)
+
+
+class ContainerRemoveButton(_ContainerButtonBase):
+    """Button to remove a container."""
+
+    _attr_translation_key = "remove"
+    _attr_icon = "mdi:delete"
+
+    def __init__(
+        self,
+        coordinator: RemoteContainersCoordinator,
+        container_name: str,
+        entry_id: str,
+    ) -> None:
+        """Initialize the remove button."""
+        super().__init__(coordinator, container_name, entry_id, "remove")
+
+    async def async_press(self) -> None:
+        """Stop and remove the container."""
+        _LOGGER.info("Removing container %s", self._container_name)
+        await self.coordinator.async_remove_container(self._container_name)

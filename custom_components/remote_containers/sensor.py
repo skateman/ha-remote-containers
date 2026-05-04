@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
@@ -43,6 +44,9 @@ async def async_setup_entry(
                 new_entities.append(
                     ContainerStateSensor(coordinator, container_name, entry.entry_id)
                 )
+                new_entities.append(
+                    ContainerStartedAtSensor(coordinator, container_name, entry.entry_id)
+                )
 
         if new_entities:
             async_add_entities(new_entities)
@@ -56,25 +60,23 @@ async def async_setup_entry(
     )
 
 
-class ContainerStateSensor(CoordinatorEntity[RemoteContainersCoordinator], SensorEntity):
-    """Sensor showing container state."""
+class _ContainerSensorBase(CoordinatorEntity[RemoteContainersCoordinator], SensorEntity):
+    """Base class for container sensors."""
 
     _attr_has_entity_name = True
-    _attr_name = "State"
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_icon = "mdi:docker"
 
     def __init__(
         self,
         coordinator: RemoteContainersCoordinator,
         container_name: str,
         entry_id: str,
+        unique_id_suffix: str,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._container_name = container_name
         self._entry_id = entry_id
-        self._attr_unique_id = f"{entry_id}_{container_name}_state"
+        self._attr_unique_id = f"{entry_id}_{container_name}_{unique_id_suffix}"
 
     @property
     def container(self) -> ContainerInfo | None:
@@ -85,14 +87,6 @@ class ContainerStateSensor(CoordinatorEntity[RemoteContainersCoordinator], Senso
     def available(self) -> bool:
         """Return True if entity is available."""
         return super().available and self.container is not None
-
-    @property
-    def native_value(self) -> str | None:
-        """Return the container state."""
-        container = self.container
-        if container is None:
-            return None
-        return container.state
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -107,6 +101,38 @@ class ContainerStateSensor(CoordinatorEntity[RemoteContainersCoordinator], Senso
             model=container.image if container else "Unknown",
             sw_version=container.image_tag if container else None,
         )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        if self._container_name not in self.coordinator.data:
+            self._attr_available = False
+        super()._handle_coordinator_update()
+
+
+class ContainerStateSensor(_ContainerSensorBase):
+    """Sensor showing container state."""
+
+    _attr_translation_key = "state"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:docker"
+
+    def __init__(
+        self,
+        coordinator: RemoteContainersCoordinator,
+        container_name: str,
+        entry_id: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, container_name, entry_id, "state")
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the container state."""
+        container = self.container
+        if container is None:
+            return None
+        return container.state
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -125,9 +151,36 @@ class ContainerStateSensor(CoordinatorEntity[RemoteContainersCoordinator], Senso
             "is_running": container.is_running,
         }
 
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
-        if self._container_name not in self.coordinator.data:
-            self._attr_available = False
-        super()._handle_coordinator_update()
+
+class ContainerStartedAtSensor(_ContainerSensorBase):
+    """Sensor showing when the container was started."""
+
+    _attr_translation_key = "started_at"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_icon = "mdi:clock-start"
+
+    def __init__(
+        self,
+        coordinator: RemoteContainersCoordinator,
+        container_name: str,
+        entry_id: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, container_name, entry_id, "started_at")
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return the container start time as a datetime."""
+        container = self.container
+        if container is None or not container.started_at:
+            return None
+
+        # Docker returns "0001-01-01T00:00:00Z" when never started
+        if container.started_at.startswith("0001-"):
+            return None
+
+        try:
+            return datetime.fromisoformat(container.started_at.replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            return None

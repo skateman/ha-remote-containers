@@ -46,6 +46,17 @@
     "button": {
       "restart": {
         "name": "Restart"
+      },
+      "remove": {
+        "name": "Remove"
+      }
+    },
+    "sensor": {
+      "state": {
+        "name": "State"
+      },
+      "started_at": {
+        "name": "Started at"
       }
     },
     "switch": {

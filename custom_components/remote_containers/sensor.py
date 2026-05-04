@@ -156,7 +156,7 @@ class ContainerStartedAtSensor(_ContainerSensorBase):
     """Sensor showing when the container was started."""
 
     _attr_translation_key = "started_at"
-    _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_icon = "mdi:clock-start"
 

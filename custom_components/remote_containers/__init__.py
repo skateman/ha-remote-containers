@@ -7,10 +7,11 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 
 from .const import DOMAIN, PLATFORMS
 from .coordinator import RemoteContainersCoordinator
-from .connection import SSHConnection
+from .connection import SSHConnection, SSHConnectionError
 from .services import async_setup_services, async_unload_services
 
 _LOGGER = logging.getLogger(__name__)
@@ -30,9 +31,8 @@ async def async_setup_entry(
     # Test connection
     try:
         await connection.async_connect()
-    except Exception as err:
-        _LOGGER.error("Failed to connect to remote host: %s", err)
-        raise
+    except SSHConnectionError as err:
+        raise ConfigEntryNotReady(str(err)) from err
 
     # Create coordinator
     coordinator = RemoteContainersCoordinator(hass, entry, connection)
